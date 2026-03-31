@@ -113,10 +113,14 @@ export default function App() {
       <div className="mx-auto max-w-6xl px-4 py-6">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-indigo-500/20 ring-1 ring-white/10" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500/20 ring-1 ring-white/10">
+               <div className={`h-2 w-2 rounded-full ${self?.socketId ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            </div>
             <div>
               <div className="text-lg font-semibold tracking-tight">WebShareWIFI</div>
-              <div className="text-sm text-white/60">Local WiFi P2P file sharing</div>
+              <div className="text-sm text-white/60">
+                {self?.socketId ? 'Connected to signaling' : 'Connecting to signaling...'}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-3 rounded-2xl bg-white/5 px-4 py-2 ring-1 ring-white/10">

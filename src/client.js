@@ -2,9 +2,9 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import streamSaver from 'streamsaver';
 
-const CHUNK_SIZE = 64 * 1024; // 64KB
-const BUFFER_HIGH_WATER = 8 * 1024 * 1024; // 8MB
-const BUFFER_LOW_WATER = 2 * 1024 * 1024; // 2MB
+const CHUNK_SIZE = 16 * 1024; // 16KB (more stable for WebRTC)
+const BUFFER_HIGH_WATER = 1 * 1024 * 1024; // 1MB
+const BUFFER_LOW_WATER = 256 * 1024; // 256KB
 
 function randItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -177,9 +177,18 @@ export function createWebShareClient(handlers) {
   }
 
   function createPeerConnection(peerSocketId, initiator) {
+    console.log(`[WebRTC] Creating connection to ${peerSocketId} (initiator: ${initiator})`);
+    
     const peer = new Peer({
       initiator,
-      trickle: true
+      trickle: true,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ]
+      }
     });
 
     onPeerStatus(peerSocketId, initiator ? 'connecting' : 'incoming');
