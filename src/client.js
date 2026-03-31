@@ -2,9 +2,9 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import streamSaver from 'streamsaver';
 
-const CHUNK_SIZE = 16 * 1024; // 16KB (more stable for WebRTC)
-const BUFFER_HIGH_WATER = 1 * 1024 * 1024; // 1MB
-const BUFFER_LOW_WATER = 256 * 1024; // 256KB
+const CHUNK_SIZE = 128 * 1024; // 128KB (faster throughput)
+const BUFFER_HIGH_WATER = 8 * 1024 * 1024; // 8MB
+const BUFFER_LOW_WATER = 1 * 1024 * 1024; // 1MB
 
 function randItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -285,10 +285,14 @@ export function createWebShareClient(handlers) {
         });
       }
 
-      peer.send(JSON.stringify({ t: 'FILE_CHUNK', id, chunkIndex, bytes: buf.byteLength }));
       peer.send(buf);
       bytesSent += buf.byteLength;
-      onSendProgress({ bytesSent, totalBytes, fileName: file.name });
+      
+      const now = Date.now();
+      if (!file._lastProgress || now - file._lastProgress > 100 || chunkIndex === totalChunks - 1) {
+        file._lastProgress = now;
+        onSendProgress({ bytesSent, totalBytes, fileName: file.name });
+      }
     }
 
     peer.send(JSON.stringify({ t: 'FILE_END', id, totalChunks }));
@@ -333,13 +337,6 @@ export function createWebShareClient(handlers) {
           return;
         }
 
-        if (msg.t === 'FILE_CHUNK') {
-          const rec = state.activeReceives.get(msg.id);
-          if (!rec) return;
-          rec.expectingChunkForId = msg.id;
-          return;
-        }
-
         if (msg.t === 'FILE_END') {
           const rec = state.activeReceives.get(msg.id);
           if (!rec) return;
@@ -347,6 +344,10 @@ export function createWebShareClient(handlers) {
             await rec.writer.close();
           } catch {}
           state.activeReceives.delete(msg.id);
+          
+          // Force a final 100% progress update
+          onReceiveProgress({ bytesReceived: rec.totalBytes, totalBytes: rec.totalBytes, fileName: rec.fileName });
+          
           onToast(`Saved: ${rec.fileName}`);
           return;
         }
@@ -356,40 +357,28 @@ export function createWebShareClient(handlers) {
       }
     }
 
-    // Binary chunk: prefer the transfer that most recently announced a chunk.
-    let id = null;
-    let rec = null;
-    for (const [rid, r] of state.activeReceives.entries()) {
-      if (r.expectingChunkForId) {
-        id = rid;
-        rec = r;
-        break;
-      }
-    }
-    if (!rec) {
-      const last = Array.from(state.activeReceives.entries()).slice(-1)[0];
-      if (!last) return;
-      id = last[0];
-      rec = last[1];
-    }
+    // Binary chunk: apply to the most recently created transfer
+    const last = Array.from(state.activeReceives.entries()).slice(-1)[0];
+    if (!last) return;
+    const [id, rec] = last;
 
     const chunk = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     try {
       await rec.writer.write(chunk);
+      rec.bytesReceived += chunk.byteLength;
+
+      const now = Date.now();
+      if (!rec.lastProgressTime || now - rec.lastProgressTime > 100 || rec.bytesReceived >= rec.totalBytes) {
+        rec.lastProgressTime = now;
+        onReceiveProgress({ bytesReceived: rec.bytesReceived, totalBytes: rec.totalBytes, fileName: rec.fileName });
+      }
     } catch (e) {
       onToast(`Write failed: ${e?.message ?? e}`);
       try {
         await rec.writer.abort();
       } catch {}
       state.activeReceives.delete(id);
-      return;
     }
-
-    rec.expectingChunkForId = null;
-    rec.bytesReceived += chunk.byteLength;
-    onReceiveProgress({ bytesReceived: rec.bytesReceived, totalBytes: rec.totalBytes, fileName: rec.fileName });
-
-    // Optional: ACK pacing support (not required for basic operation).
     // state.socket? no; ACK would go over datachannel. Keeping protocol simple.
     void peerSocketId;
   }
