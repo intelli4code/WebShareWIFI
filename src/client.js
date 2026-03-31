@@ -103,6 +103,12 @@ export function createWebShareClient(handlers) {
       }
     });
 
+    socket.on('self:update', (payload) => {
+      console.log(`[Client] Self update from server:`, payload);
+      state.self = { ...state.self, ...payload };
+      onSelf({ ...state.self });
+    });
+
     socket.on('peers:update', (peers) => {
       setPeers((peers ?? []).filter((p) => p?.socketId && p.socketId !== socket.id));
     });

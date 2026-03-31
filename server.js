@@ -121,6 +121,8 @@ io.on('connection', (socket) => {
     
     console.log(`[Presence] ${safe.displayName} joined ${roomId ? `Room: ${roomId}` : `IP: ${ipKey}`}`);
 
+    // Tell the client what their effective key is
+    socket.emit('self:update', { socketId: socket.id, ipKey, roomId, effectiveKey });
     socket.emit('peers:update', peersListForIpKey(effectiveKey, socket.id));
     broadcastPeersUpdate(effectiveKey);
   });

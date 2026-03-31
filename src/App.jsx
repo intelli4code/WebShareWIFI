@@ -140,7 +140,10 @@ export default function App() {
               <div>
                 <div className="text-sm font-semibold">Discovery</div>
                 <div className="text-xs text-white/60">
-                  {peers.length} peer(s) {self?.roomId ? `in Room: ${self.roomId}` : 'on your WiFi'}
+                  {peers.length} peer(s) found
+                  <span className="ml-1 opacity-50">
+                    ({self?.roomId ? `Room: ${self.roomId}` : `WiFi IP: ${self?.ipKey || '...'}`})
+                  </span>
                 </div>
               </div>
               <div className="flex gap-2">
