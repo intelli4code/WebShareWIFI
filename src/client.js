@@ -2,9 +2,9 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import streamSaver from 'streamsaver';
 
-const CHUNK_SIZE = 128 * 1024; // 128KB (faster throughput)
-const BUFFER_HIGH_WATER = 8 * 1024 * 1024; // 8MB
-const BUFFER_LOW_WATER = 1 * 1024 * 1024; // 1MB
+const CHUNK_SIZE = 256 * 1024; // 256KB (Max safe Chrome limit)
+const BUFFER_HIGH_WATER = 16 * 1024 * 1024; // 16MB (Max buffer saturation)
+const BUFFER_LOW_WATER = 4 * 1024 * 1024; // 4MB
 
 function randItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
