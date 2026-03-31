@@ -13,9 +13,18 @@ const KEY_PATH = process.env.TLS_KEY_PATH || path.resolve(process.cwd(), 'certs'
 
 function normalizeIp(raw) {
   if (!raw) return 'unknown';
-  const s = String(raw);
-  if (s.startsWith('::ffff:')) return s.slice('::ffff:'.length);
+  let s = String(raw).trim();
+  if (s.startsWith('::ffff:')) {
+    s = s.slice('::ffff:'.length);
+  }
   if (s === '::1') return '127.0.0.1';
+  
+  // IP Subnet matching feature:
+  // If IPv4 like "104.156.91.28", we group by "104.156.91.x"
+  const parts = s.split('.');
+  if (parts.length === 4) {
+    return parts.slice(0, 3).join('.') + '.x';
+  }
   return s;
 }
 

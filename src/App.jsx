@@ -146,7 +146,7 @@ export default function App() {
                 <div className="text-xs text-white/60">
                   {peers.length} peer(s) found
                   <span className="ml-1 opacity-50">
-                    ({self?.roomId ? `Room: ${self.roomId}` : `WiFi IP: ${self?.ipKey || '...'}`})
+                    ({self?.roomId ? `Room: ${self.roomId}` : `Subnet: ${self?.ipKey || '...'}`})
                   </span>
                 </div>
               </div>
