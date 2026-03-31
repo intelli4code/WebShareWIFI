@@ -296,46 +296,64 @@ export function createWebShareClient(handlers) {
   }
 
   async function onData(peerSocketId, data) {
+    let textData = null;
     if (typeof data === 'string') {
-      const msg = safeJsonParse(data);
-      if (!msg?.t) return;
-
-      if (msg.t === 'FILE_META') {
-        const { id, name, size } = msg;
-        if (!id || !name || !Number.isFinite(size)) return;
-
-        onToast(`Receiving: ${name}`);
-        onReceiveProgress({ bytesReceived: 0, totalBytes: size, fileName: name });
-
-        const fileStream = streamSaver.createWriteStream(name, { size });
-        const writer = fileStream.getWriter();
-        state.activeReceives.set(id, {
-          writer,
-          bytesReceived: 0,
-          totalBytes: size,
-          fileName: name
-        });
-        return;
-      }
-
-      if (msg.t === 'FILE_CHUNK') {
-        const rec = state.activeReceives.get(msg.id);
-        if (!rec) return;
-        rec.expectingChunkForId = msg.id;
-        return;
-      }
-
-      if (msg.t === 'FILE_END') {
-        const rec = state.activeReceives.get(msg.id);
-        if (!rec) return;
+      textData = data;
+    } else if (data && (data instanceof Uint8Array || data instanceof ArrayBuffer || (data.constructor && data.constructor.name === 'Buffer'))) {
+      const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+      // 123 is '{' in ASCII. Only try to parse UTF-8 JSON if it starts with '{'
+      if (bytes.length > 0 && bytes[0] === 123) {
         try {
-          await rec.writer.close();
+          const str = new TextDecoder().decode(bytes);
+          if (str.includes('"t":')) {
+            textData = str;
+          }
         } catch {}
-        state.activeReceives.delete(msg.id);
-        onToast(`Saved: ${rec.fileName}`);
+      }
+    }
+
+    if (textData) {
+      const msg = safeJsonParse(textData);
+      if (msg?.t) {
+        if (msg.t === 'FILE_META') {
+          const { id, name, size } = msg;
+          if (!id || !name || !Number.isFinite(size)) return;
+
+          onToast(`Receiving: ${name}`);
+          onReceiveProgress({ bytesReceived: 0, totalBytes: size, fileName: name });
+
+          const fileStream = streamSaver.createWriteStream(name, { size });
+          const writer = fileStream.getWriter();
+          state.activeReceives.set(id, {
+            writer,
+            bytesReceived: 0,
+            totalBytes: size,
+            fileName: name
+          });
+          return;
+        }
+
+        if (msg.t === 'FILE_CHUNK') {
+          const rec = state.activeReceives.get(msg.id);
+          if (!rec) return;
+          rec.expectingChunkForId = msg.id;
+          return;
+        }
+
+        if (msg.t === 'FILE_END') {
+          const rec = state.activeReceives.get(msg.id);
+          if (!rec) return;
+          try {
+            await rec.writer.close();
+          } catch {}
+          state.activeReceives.delete(msg.id);
+          onToast(`Saved: ${rec.fileName}`);
+          return;
+        }
+        
+        // Unrecognized control message, ignore
         return;
       }
-      return;
     }
 
     // Binary chunk: prefer the transfer that most recently announced a chunk.
