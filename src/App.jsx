@@ -139,14 +139,26 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold">Discovery</div>
-                <div className="text-xs text-white/60">{peers.length} peer(s) on your WiFi</div>
+                <div className="text-xs text-white/60">
+                  {peers.length} peer(s) {self?.roomId ? `in Room: ${self.roomId}` : 'on your WiFi'}
+                </div>
               </div>
-              <button
-                onClick={() => clientRef.current?.reannounce()}
-                className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold ring-1 ring-white/10 hover:bg-white/15"
-              >
-                Refresh
-              </button>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Room ID (Optional)"
+                  className="w-24 rounded-xl bg-white/10 px-3 py-2 text-xs ring-1 ring-white/10 focus:outline-none focus:ring-emerald-400/50"
+                  onBlur={(e) => clientRef.current?.reannounce(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && clientRef.current?.reannounce(e.target.value)}
+                  defaultValue={self?.roomId || ''}
+                />
+                <button
+                  onClick={() => clientRef.current?.reannounce()}
+                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold ring-1 ring-white/10 hover:bg-white/15"
+                >
+                  Refresh
+                </button>
+              </div>
             </div>
 
             <div className="relative mt-4 aspect-square w-full overflow-hidden rounded-3xl bg-slate-950/40 ring-1 ring-white/10">
@@ -200,7 +212,9 @@ export default function App() {
             <div className="mt-4 space-y-2">
               {peers.length === 0 ? (
                 <div className="rounded-2xl bg-white/5 p-4 text-sm text-white/70 ring-1 ring-white/10">
-                  Waiting for another device on the same WiFi…
+                  {self?.roomId 
+                    ? `No one else is in Room "${self.roomId}" yet.` 
+                    : 'Searching for devices on the same WiFi... Type a Room ID above if discovery fails.'}
                 </div>
               ) : (
                 peers.map((p) => {

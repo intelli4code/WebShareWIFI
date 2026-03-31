@@ -54,7 +54,8 @@ export function createWebShareClient(handlers) {
     },
     peers: [],
     peerBySocketId: new Map(), // peerSocketId -> { peer, dataChannel }
-    activeReceives: new Map() // id -> { writer, bytesReceived, totalBytes, fileName }
+    activeReceives: new Map(), // id -> { writer, bytesReceived, totalBytes, fileName }
+    roomId: null
   };
 
   // StreamSaver requires a MITM page + SW.
@@ -66,20 +67,28 @@ export function createWebShareClient(handlers) {
     onPeers(state.peers);
   }
 
-  function connect() {
+  function connect(roomId = null) {
     const url = defaultSignalingUrl();
+    console.log(`[Client] Connecting to signaling server: ${url}${roomId ? ` (Room: ${roomId})` : ''}`);
+    
+    state.roomId = roomId;
+
     const socket = io(url, {
       transports: ['websocket'],
-      secure: window.location.protocol === 'https:',
+      secure: url.startsWith('https:'),
       reconnection: true
     });
     state.socket = socket;
 
     socket.on('connect', () => {
       state.self.socketId = socket.id;
-      onSelf({ ...state.self });
-      socket.emit('presence:hello', { displayName: state.self.displayName, avatarSeed: state.self.avatarSeed });
-      onToast('Connected. Waiting for peers on your WiFi…');
+      onSelf({ ...state.self, roomId: state.roomId });
+      socket.emit('presence:hello', { 
+        displayName: state.self.displayName, 
+        avatarSeed: state.self.avatarSeed,
+        roomId: state.roomId
+      });
+      onToast(state.roomId ? `Joined Room: ${state.roomId}` : 'Connected. Discovery active.');
     });
 
     socket.on('disconnect', () => {
@@ -131,8 +140,13 @@ export function createWebShareClient(handlers) {
     state.socket = null;
   }
 
-  function reannounce() {
-    state.socket?.emit('presence:hello', { displayName: state.self.displayName, avatarSeed: state.self.avatarSeed });
+  function reannounce(roomId = null) {
+    state.roomId = roomId || state.roomId;
+    state.socket?.emit('presence:hello', { 
+      displayName: state.self.displayName, 
+      avatarSeed: state.self.avatarSeed,
+      roomId: state.roomId
+    });
     state.socket?.emit('presence:refresh');
   }
 

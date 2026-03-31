@@ -21,7 +21,10 @@ function normalizeIp(raw) {
 
 function ipKeyFromHandshake(socket) {
   const xff = socket.handshake.headers['x-forwarded-for'];
-  if (xff) return normalizeIp(String(xff).split(',')[0].trim());
+  if (xff) {
+    const ip = String(xff).split(',')[0].trim();
+    return normalizeIp(ip);
+  }
   return normalizeIp(socket.handshake.address);
 }
 
@@ -73,40 +76,60 @@ const io = new SocketIOServer(server, {
   }
 });
 
-// In-memory presence (sufficient for LAN single-node signaling).
-const presenceBySocketId = new Map(); // socketId -> {displayName, avatarSeed, ipKey}
+// In-memory presence (socketId -> {displayName, avatarSeed, ipKey, roomId})
+const presenceBySocketId = new Map();
 
-function peersListForIpKey(ipKey, excludeSocketId) {
+function peersListForIpKey(effectiveKey, excludeSocketId) {
   const peers = [];
   for (const [socketId, p] of presenceBySocketId.entries()) {
-    if (p.ipKey !== ipKey) continue;
+    if (p.effectiveKey !== effectiveKey) continue;
     if (socketId === excludeSocketId) continue;
     peers.push({ socketId, displayName: p.displayName, avatarSeed: p.avatarSeed });
   }
   return peers;
 }
 
-function broadcastPeersUpdate(ipKey) {
-  const room = `ip:${ipKey}`;
-  const peers = peersListForIpKey(ipKey, null);
+function broadcastPeersUpdate(effectiveKey) {
+  const room = `room:${effectiveKey}`;
+  const peers = peersListForIpKey(effectiveKey, null);
   io.to(room).emit('peers:update', peers);
 }
 
 io.on('connection', (socket) => {
   const ipKey = ipKeyFromHandshake(socket);
-  socket.join(`ip:${ipKey}`);
+  // Default join by IP. presence:hello can override this with a Room ID.
+  socket.join(`room:${ipKey}`);
 
   socket.emit('self', { socketId: socket.id });
 
-  socket.on('presence:hello', (presence) => {
-    const safe = safeReadPresence(presence);
-    presenceBySocketId.set(socket.id, { ...safe, ipKey });
-    socket.emit('peers:update', peersListForIpKey(ipKey, socket.id));
-    broadcastPeersUpdate(ipKey);
+  socket.on('presence:hello', (payload) => {
+    const safe = safeReadPresence(payload);
+    const roomId = typeof payload?.roomId === 'string' && payload.roomId.trim() ? payload.roomId.trim() : null;
+    
+    // The 'effectiveKey' determines who you can see. 
+    // It defaults to your IP, but is overridden by a Room ID.
+    const effectiveKey = roomId || ipKey;
+
+    // Leave any previous IP/Room rooms
+    const prev = presenceBySocketId.get(socket.id);
+    if (prev?.effectiveKey && prev.effectiveKey !== effectiveKey) {
+      socket.leave(`room:${prev.effectiveKey}`);
+    }
+
+    socket.join(`room:${effectiveKey}`);
+    presenceBySocketId.set(socket.id, { ...safe, ipKey, roomId, effectiveKey });
+    
+    console.log(`[Presence] ${safe.displayName} joined ${roomId ? `Room: ${roomId}` : `IP: ${ipKey}`}`);
+
+    socket.emit('peers:update', peersListForIpKey(effectiveKey, socket.id));
+    broadcastPeersUpdate(effectiveKey);
   });
 
   socket.on('presence:refresh', () => {
-    socket.emit('peers:update', peersListForIpKey(ipKey, socket.id));
+    const p = presenceBySocketId.get(socket.id);
+    if (p) {
+      socket.emit('peers:update', peersListForIpKey(p.effectiveKey, socket.id));
+    }
   });
 
   socket.on('signal:send', (payload) => {
@@ -122,7 +145,10 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     const prev = presenceBySocketId.get(socket.id);
     presenceBySocketId.delete(socket.id);
-    if (prev?.ipKey) broadcastPeersUpdate(prev.ipKey);
+    if (prev?.effectiveKey) {
+      broadcastPeersUpdate(prev.effectiveKey);
+      console.log(`[Disconnect] ${prev.displayName} left ${prev.effectiveKey}`);
+    }
   });
 });
 
