@@ -49,7 +49,9 @@ export default function App() {
   const [peers, setPeers] = useState([]);
   const [selectedPeerId, setSelectedPeerId] = useState(null);
   const [statusByPeerId, setStatusByPeerId] = useState({});
-  const [fileToSend, setFileToSend] = useState(null);
+  const [filesToSend, setFilesToSend] = useState([]);
+  const [currentTransferIndex, setCurrentTransferIndex] = useState(0);
+  const [isSending, setIsSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ bytesSent: 0, totalBytes: 0, fileName: '' });
   const [recvProgress, setRecvProgress] = useState({ bytesReceived: 0, totalBytes: 0, fileName: '' });
   const [toast, setToast] = useState('');
@@ -79,10 +81,11 @@ export default function App() {
   const selectedPeer = useMemo(() => peers.find((p) => p.socketId === selectedPeerId) ?? null, [peers, selectedPeerId]);
 
   function onPickFiles(files) {
-    const f = files?.[0];
-    if (!f) return;
-    setFileToSend(f);
-    setSendProgress({ bytesSent: 0, totalBytes: f.size, fileName: f.name });
+    if (!files?.length) return;
+    const arr = Array.from(files);
+    setFilesToSend(arr);
+    setCurrentTransferIndex(0);
+    setSendProgress({ bytesSent: 0, totalBytes: arr[0].size, fileName: arr[0].name });
   }
 
   async function connectTo(peerId) {
@@ -90,12 +93,33 @@ export default function App() {
     await clientRef.current?.connectToPeer(peerId);
   }
 
-  async function sendFile() {
-    if (!fileToSend || !selectedPeerId) {
-      setToast('Pick a file and choose a peer.');
+  async function sendFiles() {
+    if (!filesToSend.length || !selectedPeerId) {
+      setToast('Pick files and choose a peer.');
       return;
     }
-    await clientRef.current?.sendFile(selectedPeerId, fileToSend);
+    
+    setIsSending(true);
+    let successCount = 0;
+    
+    for (let i = 0; i < filesToSend.length; i++) {
+      setCurrentTransferIndex(i);
+      const f = filesToSend[i];
+      setSendProgress({ bytesSent: 0, totalBytes: f.size, fileName: f.name });
+      
+      try {
+        await clientRef.current?.sendFile(selectedPeerId, f);
+        successCount++;
+      } catch (err) {
+        setToast(`Transfer failed for ${f.name}`);
+        break; // Stop queue on failure
+      }
+    }
+    
+    setToast(successCount === filesToSend.length ? 'All files transferred successfully!' : `Transferred ${successCount} files.`);
+    setIsSending(false);
+    setFilesToSend([]);
+    setCurrentTransferIndex(0);
   }
 
   return (
@@ -239,33 +263,47 @@ export default function App() {
               {/* DropZone */}
               <div className="relative group">
                 <DropZone onFiles={onPickFiles} />
-                {fileToSend && (
+                {filesToSend.length > 0 && (
                   <div className="mt-4 p-3 rounded-xl bg-white/5 border border-brand-border animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-brand-accent/10 border border-brand-accent/20">
                          <svg className="w-6 h-6 text-brand-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold text-white truncate max-w-[200px]">{fileToSend.name}</div>
-                        <div className="text-[10px] text-slate-500">{formatBytes(fileToSend.size)}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-white truncate">
+                          {filesToSend.length === 1 ? filesToSend[0].name : `${filesToSend.length} files staged`}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {formatBytes(filesToSend.reduce((acc, f) => acc + f.size, 0))} Total
+                        </div>
                       </div>
+                      {filesToSend.length > 1 && (
+                        <div className="text-[10px] font-bold text-brand-accent bg-brand-accent/10 border border-brand-accent/20 px-2 py-0.5 rounded-md">
+                          {currentTransferIndex + 1} / {filesToSend.length}
+                        </div>
+                      )}
                     </div>
                     
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Sending progress</span>
-                        <span className="tabular-nums font-medium">{Math.round((sendProgress.bytesSent / (sendProgress.totalBytes || 1)) * 100)}%</span>
+                        <span className="truncate max-w-[200px] pr-2">Sending: {sendProgress.fileName || 'Idle'}</span>
+                        <span className="tabular-nums font-medium">{sendProgress.totalBytes > 0 ? Math.round((sendProgress.bytesSent / sendProgress.totalBytes) * 100) : 0}%</span>
                       </div>
                       <ProgressBar value={sendProgress.bytesSent} max={sendProgress.totalBytes} />
                     </div>
 
                     <div className="mt-4 flex gap-2">
                       <button
-                        onClick={sendFile}
-                        disabled={!fileToSend || !selectedPeerId}
-                        className="btn-primary w-full shadow-lg shadow-brand-accent/10 py-3"
+                        onClick={sendFiles}
+                        disabled={isSending || !selectedPeerId}
+                        className="btn-primary w-full shadow-lg shadow-brand-accent/10 py-3 flex justify-center items-center gap-2"
                       >
-                        Transmit now
+                        {isSending ? (
+                          <>
+                            <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                            Transmitting...
+                          </>
+                        ) : 'Transmit Queue'}
                       </button>
                     </div>
                   </div>
@@ -358,10 +396,11 @@ function DropZone({ onFiles }) {
         </svg>
       </div>
       <div className="text-sm font-semibold text-slate-200">Stage Files</div>
-      <div className="text-[11px] text-slate-500 mt-1">Drop here or click to browse</div>
+      <div className="text-[11px] text-slate-500 mt-1">Drop files here or click to browse</div>
       <input
         ref={inputRef}
         type="file"
+        multiple
         className="hidden"
         onChange={(e) => onFiles(e.target.files)}
       />
