@@ -2,9 +2,9 @@ import io from 'socket.io-client';
 import Peer from 'simple-peer';
 import streamSaver from 'streamsaver';
 
-const CHUNK_SIZE = 256 * 1024; // 256KB (Max safe Chrome limit)
-const BUFFER_HIGH_WATER = 16 * 1024 * 1024; // 16MB (Max buffer saturation)
-const BUFFER_LOW_WATER = 4 * 1024 * 1024; // 4MB
+const CHUNK_SIZE = 64 * 1024; // 64KB (Safe cross-browser limit, smoother progress)
+const BUFFER_HIGH_WATER = 8 * 1024 * 1024; // 8MB (Max buffer saturation)
+const BUFFER_LOW_WATER = 1 * 1024 * 1024; // 1MB
 
 function randItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -218,7 +218,13 @@ export function createWebShareClient(handlers) {
     });
 
     peer.on('data', async (data) => {
-      await onData(peerSocketId, data);
+      // Backpressure: pause WebRTC stream while processing/writing to disk
+      peer.pause();
+      try {
+        await onData(peerSocketId, data);
+      } finally {
+        peer.resume();
+      }
     });
 
     return { peer };
