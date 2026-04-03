@@ -7,12 +7,12 @@ function hashToAngleDegrees(input) {
     h ^= input.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return ((h >>> 0) % 3600) / 10;
+  return ((h >>> 0) % 360) ;
 }
 
 function seededColor(seed) {
   const angle = hashToAngleDegrees(seed);
-  return `hsl(${angle}, 85%, 58%)`;
+  return `hsl(${angle}, 75%, 60%)`;
 }
 
 function initials(name) {
@@ -32,11 +32,14 @@ function formatBytes(n) {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function ProgressBar({ value, max }) {
+function ProgressBar({ value, max, color = 'bg-brand-accent' }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-      <div className="h-full rounded-full bg-emerald-400 transition-[width]" style={{ width: `${pct}%` }} />
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5 border border-white/5">
+      <div 
+        className={`h-full rounded-full transition-all duration-300 ease-out ${color}`} 
+        style={{ width: `${pct}%` }} 
+      />
     </div>
   );
 }
@@ -64,7 +67,7 @@ export default function App() {
       onToast: (msg) => {
         setToast(msg);
         window.clearTimeout(clientRef.current?._toastTimer);
-        clientRef.current._toastTimer = window.setTimeout(() => setToast(''), 2600);
+        clientRef.current._toastTimer = window.setTimeout(() => setToast(''), 3000);
       }
     });
 
@@ -74,19 +77,6 @@ export default function App() {
   }, []);
 
   const selectedPeer = useMemo(() => peers.find((p) => p.socketId === selectedPeerId) ?? null, [peers, selectedPeerId]);
-
-  const radarPeers = useMemo(() => {
-    const usable = peers.slice(0, 12);
-    const r = 148;
-    return usable.map((p) => {
-      const a = (hashToAngleDegrees(p.socketId) * Math.PI) / 180;
-      return {
-        peer: p,
-        x: Math.cos(a) * r,
-        y: Math.sin(a) * r
-      };
-    });
-  }, [peers]);
 
   function onPickFiles(files) {
     const f = files?.[0];
@@ -108,230 +98,237 @@ export default function App() {
     await clientRef.current?.sendFile(selectedPeerId, fileToSend);
   }
 
-  const container = (
-    <div className="min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500/20 ring-1 ring-white/10">
-               <div className={`h-2 w-2 rounded-full ${self?.socketId ? 'bg-emerald-400' : 'bg-red-400'}`} />
+  return (
+    <div className="flex flex-col min-h-screen">
+      {/* Header */}
+      <header className="sticky top-0 z-50 glass-card border-x-0 border-t-0 py-4 px-6">
+        <div className="mx-auto max-w-7xl flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-accent/20 border border-brand-accent/30 shadow-lg shadow-brand-accent/5">
+              <svg className="w-6 h-6 text-brand-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
             </div>
             <div>
-              <div className="text-lg font-semibold tracking-tight">WebShareWIFI</div>
-              <div className="text-sm text-white/60">
-                {self?.socketId ? 'Connected to signaling' : 'Connecting to signaling...'}
-              </div>
+              <h1 className="text-xl font-bold tracking-tight text-white">WebShareWIFI</h1>
+              <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${self?.socketId ? 'bg-brand-success pulse' : 'bg-red-500'}`} />
+                {self?.socketId ? 'Ready for transfer' : 'Establishing secure connection...'}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 rounded-2xl bg-white/5 px-4 py-2 ring-1 ring-white/10">
+
+          <div className="flex items-center gap-3 glass-card rounded-xl px-4 py-2 bg-brand-card/50">
             <div
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-xs font-semibold text-slate-950"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white shadow-inner"
               style={{ backgroundColor: seededColor(self?.avatarSeed ?? 'self') }}
-              title={self?.displayName ?? 'You'}
             >
               {initials(self?.displayName ?? 'You')}
             </div>
-            <div className="text-sm">
-              <div className="font-medium">{self?.displayName ?? 'Connecting…'}</div>
-              <div className="text-xs text-white/60">{self?.socketId ? `ID: ${self.socketId.slice(0, 6)}` : '—'}</div>
+            <div className="hidden sm:block">
+              <div className="text-sm font-semibold">{self?.displayName ?? 'Guest User'}</div>
+              <div className="text-[10px] text-slate-500 font-mono">{self?.socketId ? `ID: ${self.socketId.slice(0, 8)}` : 'DISCONNECTED'}</div>
             </div>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[420px_1fr]">
-          <section className="rounded-3xl bg-white/5 p-4 ring-1 ring-white/10 sm:p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold">Discovery</div>
-                <div className="text-xs text-white/60">
-                  {peers.length} peer(s) found
-                  <span className="ml-1 opacity-50">
-                    ({self?.roomId ? `Room: ${self.roomId}` : `Subnet: ${self?.ipKey || '...'}`})
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-2">
+      {/* Main Layout */}
+      <main className="flex-1 mx-auto max-w-7xl w-full p-6 grid gap-8 lg:grid-cols-[1fr_380px]">
+        
+        {/* Discovery & Peers */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Active Peers</h2>
+              <p className="text-sm text-slate-400">Discover and connect with devices on your network</p>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative">
                 <input
                   type="text"
-                  placeholder="Room ID (Optional)"
-                  className="w-24 rounded-xl bg-white/10 px-3 py-2 text-xs ring-1 ring-white/10 focus:outline-none focus:ring-emerald-400/50"
+                  placeholder="Private Room..."
+                  className="w-40 glass-card rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-accent/50 transition-all"
                   onBlur={(e) => clientRef.current?.reannounce(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && clientRef.current?.reannounce(e.target.value)}
                   defaultValue={self?.roomId || ''}
                 />
-                <button
-                  onClick={() => clientRef.current?.reannounce()}
-                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold ring-1 ring-white/10 hover:bg-white/15"
-                >
-                  Refresh
-                </button>
               </div>
+              <button 
+                onClick={() => clientRef.current?.reannounce()}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                <span className="hidden sm:inline">Scan</span>
+              </button>
             </div>
+          </div>
 
-            <div className="relative mt-4 aspect-square w-full overflow-hidden rounded-3xl bg-slate-950/40 ring-1 ring-white/10">
-              <div className="absolute inset-0">
-                <div className="absolute left-1/2 top-1/2 h-[280px] w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10" />
-                <div className="absolute left-1/2 top-1/2 h-[190px] w-[190px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10" />
-                <div className="absolute left-1/2 top-1/2 h-[110px] w-[110px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10" />
+          {peers.length === 0 ? (
+            <div className="glass-card rounded-2xl p-12 text-center border-dashed">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-800/50 mb-4">
+                <svg className="w-8 h-8 text-slate-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
-
-              <div className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-2xl text-sm font-bold text-slate-950 shadow-sm ring-1 ring-white/10"
-                  style={{ backgroundColor: seededColor(self?.avatarSeed ?? 'self') }}
-                >
-                  {initials(self?.displayName ?? 'You')}
-                </div>
-                <div className="mt-2 text-xs text-white/70">You</div>
-              </div>
-
-              {radarPeers.map(({ peer, x, y }) => {
-                const st = statusByPeerId[peer.socketId] ?? 'available';
-                const active = selectedPeerId === peer.socketId;
+              <h3 className="text-lg font-medium text-slate-300">Searching for peers...</h3>
+              <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">
+                No devices found on the same network. Ensure others have this page open or join a <span className="text-brand-accent">Room ID</span> together.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {peers.map((p) => {
+                const st = statusByPeerId[p.socketId] ?? 'available';
+                const active = selectedPeerId === p.socketId;
                 return (
                   <button
-                    key={peer.socketId}
-                    onClick={() => connectTo(peer.socketId)}
-                    className={[
-                      'absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-2xl px-2.5 py-2 text-left ring-1 transition',
-                      active ? 'bg-white/15 ring-emerald-400/60' : 'bg-white/5 ring-white/10 hover:bg-white/10'
-                    ].join(' ')}
-                    style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
-                    title={peer.displayName}
+                    key={p.socketId}
+                    onClick={() => connectTo(p.socketId)}
+                    className={`group relative text-left p-4 rounded-2xl border transition-all duration-300 ${
+                      active 
+                        ? 'glass-card border-brand-accent/50 bg-brand-accent/5 ring-1 ring-brand-accent/20 shadow-lg shadow-brand-accent/5' 
+                        : 'glass-card hover:border-slate-600 hover:bg-slate-800/50'
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-start justify-between mb-4">
                       <div
-                        className="flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold text-slate-950"
-                        style={{ backgroundColor: seededColor(peer.avatarSeed) }}
+                        className="flex h-12 w-12 items-center justify-center rounded-xl text-lg font-bold text-white shadow-lg shrink-0"
+                        style={{ backgroundColor: seededColor(p.avatarSeed) }}
                       >
-                        {initials(peer.displayName)}
+                        {initials(p.displayName)}
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-xs font-semibold">{peer.displayName}</div>
-                        <div className="text-[11px] text-white/60">{st}</div>
+                      <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                        st === 'connected' ? 'bg-brand-success/10 text-brand-success' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {st}
                       </div>
                     </div>
+                    <div>
+                      <div className="font-semibold text-white group-hover:text-brand-accent transition-colors truncate">
+                        {p.displayName}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono mt-0.5 truncate uppercase">
+                        {p.socketId.slice(0, 12)}
+                      </div>
+                    </div>
+                    {active && (
+                      <div className="absolute top-2 right-2 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-accent opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-accent"></span>
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
+          )}
+        </div>
 
-            <div className="mt-4 space-y-2">
-              {peers.length === 0 ? (
-                <div className="rounded-2xl bg-white/5 p-4 text-sm text-white/70 ring-1 ring-white/10">
-                  {self?.roomId 
-                    ? `No one else is in Room "${self.roomId}" yet.` 
-                    : 'Searching for devices on the same WiFi... Type a Room ID above if discovery fails.'}
-                </div>
-              ) : (
-                peers.map((p) => {
-                  const st = statusByPeerId[p.socketId] ?? 'available';
-                  const active = selectedPeerId === p.socketId;
-                  return (
-                    <button
-                      key={p.socketId}
-                      onClick={() => connectTo(p.socketId)}
-                      className={[
-                        'flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left ring-1 transition',
-                        active ? 'bg-white/15 ring-emerald-400/60' : 'bg-white/5 ring-white/10 hover:bg-white/10'
-                      ].join(' ')}
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-semibold text-slate-950"
-                          style={{ backgroundColor: seededColor(p.avatarSeed) }}
-                        >
-                          {initials(p.displayName)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{p.displayName}</div>
-                          <div className="truncate text-xs text-white/60">{p.socketId.slice(0, 10)}</div>
-                        </div>
-                      </div>
-                      <div className="text-xs text-white/70">{st}</div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </section>
+        {/* Transfer Sidebar */}
+        <aside className="space-y-6">
+          <div className="glass-card rounded-2xl p-6 ring-1 ring-white/5">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-6 flex items-center gap-2">
+              <svg className="w-4 h-4 text-brand-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Fast Transfer
+            </h3>
 
-          <section className="rounded-3xl bg-white/5 p-4 ring-1 ring-white/10 sm:p-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-sm font-semibold">Transfer</div>
-                <div className="text-xs text-white/60">
-                  {selectedPeer ? `Selected: ${selectedPeer.displayName}` : 'Select a peer from Discovery'}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => clientRef.current?.disconnectFromPeer(selectedPeerId)}
-                  disabled={!selectedPeerId}
-                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold ring-1 ring-white/10 hover:bg-white/15 disabled:opacity-50"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-3xl bg-slate-950/35 p-4 ring-1 ring-white/10">
-                <div className="text-xs font-semibold text-white/80">Send</div>
-
+            <div className="space-y-6">
+              {/* DropZone */}
+              <div className="relative group">
                 <DropZone onFiles={onPickFiles} />
+                {fileToSend && (
+                  <div className="mt-4 p-3 rounded-xl bg-white/5 border border-brand-border animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-brand-accent/10 border border-brand-accent/20">
+                         <svg className="w-6 h-6 text-brand-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-white truncate max-w-[200px]">{fileToSend.name}</div>
+                        <div className="text-[10px] text-slate-500">{formatBytes(fileToSend.size)}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Sending progress</span>
+                        <span className="tabular-nums font-medium">{Math.round((sendProgress.bytesSent / (sendProgress.totalBytes || 1)) * 100)}%</span>
+                      </div>
+                      <ProgressBar value={sendProgress.bytesSent} max={sendProgress.totalBytes} />
+                    </div>
 
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-white/70">
-                    <div className="truncate">{sendProgress.fileName || 'No file selected'}</div>
-                    <div className="tabular-nums">
-                      {formatBytes(sendProgress.bytesSent)} / {formatBytes(sendProgress.totalBytes)}
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={sendFile}
+                        disabled={!fileToSend || !selectedPeerId}
+                        className="btn-primary w-full shadow-lg shadow-brand-accent/10 py-3"
+                      >
+                        Transmit now
+                      </button>
                     </div>
                   </div>
-                  <ProgressBar value={sendProgress.bytesSent} max={sendProgress.totalBytes} />
-                </div>
-
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={sendFile}
-                    disabled={!fileToSend || !selectedPeerId}
-                    className="flex-1 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:opacity-50"
-                  >
-                    Send to selected peer
-                  </button>
-                </div>
+                )}
               </div>
 
-              <div className="rounded-3xl bg-slate-950/35 p-4 ring-1 ring-white/10">
-                <div className="text-xs font-semibold text-white/80">Receive</div>
-
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-white/70">
-                    <div className="truncate">{recvProgress.fileName || 'Waiting…'}</div>
-                    <div className="tabular-nums">
-                      {formatBytes(recvProgress.bytesReceived)} / {formatBytes(recvProgress.totalBytes)}
+              {/* Receive Section */}
+              <div className="pt-6 border-t border-brand-border">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-4">Live Reception</h4>
+                {recvProgress.totalBytes > 0 ? (
+                  <div className="p-3 rounded-xl bg-slate-900 border border-brand-border">
+                     <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-brand-success/10 border border-brand-success/20">
+                         <svg className="w-6 h-6 text-brand-success" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-white truncate max-w-[200px]">{recvProgress.fileName || 'Incoming...'}</div>
+                        <div className="text-[10px] text-slate-500">{formatBytes(recvProgress.bytesReceived)} / {formatBytes(recvProgress.totalBytes)}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Streaming to disk</span>
+                        <span className="tabular-nums font-medium text-brand-success">{Math.round((recvProgress.bytesReceived / (recvProgress.totalBytes || 1)) * 100)}%</span>
+                      </div>
+                      <ProgressBar value={recvProgress.bytesReceived} max={recvProgress.totalBytes} color="bg-brand-success" />
                     </div>
                   </div>
-                  <ProgressBar value={recvProgress.bytesReceived} max={recvProgress.totalBytes} />
-                  <div className="text-[11px] text-white/60">
-                    Downloads stream directly to disk to avoid memory spikes.
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-4 text-center">
+                    <div className="w-8 h-8 rounded-full border-2 border-slate-800 border-t-brand-accent animate-spin mb-4" />
+                    <p className="text-[11px] text-slate-500 px-4">Waiting for incoming transfers. Receiver stream is active.</p>
                   </div>
-                </div>
+                )}
               </div>
             </div>
-          </section>
-        </div>
-      </div>
+          </div>
+          
+          <div className="px-2">
+            <button
+               onClick={() => clientRef.current?.disconnectFromPeer(selectedPeerId)}
+               disabled={!selectedPeerId}
+               className="text-xs text-slate-500 hover:text-red-400 flex items-center gap-2 transition-colors disabled:opacity-30"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Terminate active peer session
+            </button>
+          </div>
+        </aside>
+      </main>
 
-      {toast ? (
-        <div className="fixed bottom-4 left-1/2 z-50 w-[min(520px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl bg-black/70 px-4 py-3 text-sm text-white ring-1 ring-white/10 backdrop-blur">
-          {toast}
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-8 duration-500">
+          <div className="px-6 py-3 rounded-2xl glass-card bg-slate-900 shadow-2xl border-brand-accent/20 flex items-center gap-3">
+             <div className="h-2 w-2 rounded-full bg-brand-accent animate-pulse" />
+             <span className="text-sm font-medium text-slate-200">{toast}</span>
+          </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
-
-  return container;
 }
 
 function DropZone({ onFiles }) {
@@ -340,38 +337,28 @@ function DropZone({ onFiles }) {
 
   return (
     <div
-      onDragEnter={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDrag(true);
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDrag(true);
-      }}
-      onDragLeave={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDrag(false);
-      }}
+      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDrag(true); }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDrag(true); }}
+      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDrag(false); }}
       onDrop={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDrag(false);
+        e.preventDefault(); e.stopPropagation(); setDrag(false);
         const files = e.dataTransfer?.files;
         if (files?.length) onFiles(files);
       }}
-      className={[
-        'mt-3 flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed px-4 py-6 text-center transition',
-        drag ? 'border-emerald-400/80 bg-emerald-400/10' : 'border-white/15 bg-white/5 hover:bg-white/10'
-      ].join(' ')}
+      className={`relative h-48 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer ${
+        drag ? 'border-brand-accent bg-brand-accent/5 scale-[0.99]' : 'border-slate-800 bg-white/[0.02] hover:bg-white/[0.04] hover:border-slate-700'
+      }`}
       onClick={() => inputRef.current?.click()}
       role="button"
       tabIndex={0}
     >
-      <div className="text-sm font-semibold">Drop a file here</div>
-      <div className="mt-1 text-xs text-white/60">or tap to pick a file</div>
+      <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+        <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+        </svg>
+      </div>
+      <div className="text-sm font-semibold text-slate-200">Stage Files</div>
+      <div className="text-[11px] text-slate-500 mt-1">Drop here or click to browse</div>
       <input
         ref={inputRef}
         type="file"
