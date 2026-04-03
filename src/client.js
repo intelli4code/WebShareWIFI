@@ -3,8 +3,7 @@ import Peer from 'simple-peer';
 import streamSaver from 'streamsaver';
 
 const CHUNK_SIZE = 256 * 1024; // 256KB (Max safe Chrome limit, better throughput)
-const BUFFER_HIGH_WATER = 32 * 1024 * 1024; // 32MB (Higher saturation for speed)
-const BUFFER_LOW_WATER = 8 * 1024 * 1024; // 8MB (Resume sooner to keep pipe full)
+const WINDOW_SIZE = 8; // Receive 8 chunks (2MB) perfectly before asking for more
 
 function randItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -54,7 +53,8 @@ export function createWebShareClient(handlers) {
     },
     peers: [],
     peerBySocketId: new Map(), // peerSocketId -> { peer, dataChannel }
-    activeReceives: new Map(), // id -> { writer, bytesReceived, totalBytes, fileName }
+    activeReceives: new Map(), // id -> { writer, bytesReceived, totalBytes, fileName, chunksWritten }
+    pendingAcks: new Map(), // id -> resolve
     roomId: null
   };
 
@@ -200,12 +200,6 @@ export function createWebShareClient(handlers) {
     peer.on('connect', () => {
       onPeerStatus(peerSocketId, 'connected');
       onToast(`Connected to ${peerSocketId.slice(0, 6)}.`);
-      try {
-        const dc = peer._channel;
-        if (dc) {
-          dc.bufferedAmountLowThreshold = BUFFER_LOW_WATER;
-        }
-      } catch {}
     });
 
     peer.on('close', () => {
@@ -266,30 +260,12 @@ export function createWebShareClient(handlers) {
     let bytesSent = 0;
     onSendProgress({ bytesSent, totalBytes, fileName: file.name });
 
-    const dc = peer._channel;
     const totalChunks = Math.ceil(totalBytes / CHUNK_SIZE);
 
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(totalBytes, start + CHUNK_SIZE);
       const buf = await file.slice(start, end).arrayBuffer();
-
-      // Backpressure: pause when bufferedAmount is high.
-      while (dc && dc.bufferedAmount > BUFFER_HIGH_WATER) {
-        await new Promise((resolve) => {
-          const onLow = () => {
-            dc.removeEventListener('bufferedamountlow', onLow);
-            resolve();
-          };
-          dc.addEventListener('bufferedamountlow', onLow, { once: true });
-          setTimeout(() => {
-            try {
-              dc.removeEventListener('bufferedamountlow', onLow);
-            } catch {}
-            resolve();
-          }, 250);
-        });
-      }
 
       peer.send(buf);
       bytesSent += buf.byteLength;
@@ -298,6 +274,13 @@ export function createWebShareClient(handlers) {
       if (!file._lastProgress || now - file._lastProgress > 100 || chunkIndex === totalChunks - 1) {
         file._lastProgress = now;
         onSendProgress({ bytesSent, totalBytes, fileName: file.name });
+      }
+
+      // App-Level ACK Backpressure: Wait for receiver to acknowledge exactly exactly WINDOW_SIZE chunks
+      if ((chunkIndex + 1) % WINDOW_SIZE === 0 && chunkIndex !== totalChunks - 1) {
+        await new Promise((resolve) => {
+          state.pendingAcks.set(id, resolve);
+        });
       }
     }
 
@@ -325,6 +308,15 @@ export function createWebShareClient(handlers) {
     if (textData) {
       const msg = safeJsonParse(textData);
       if (msg?.t) {
+        if (msg.t === 'ACK') {
+          const resolveFn = state.pendingAcks.get(msg.id);
+          if (resolveFn) {
+            state.pendingAcks.delete(msg.id);
+            resolveFn();
+          }
+          return;
+        }
+
         if (msg.t === 'FILE_META') {
           const { id, name, size } = msg;
           if (!id || !name || !Number.isFinite(size)) return;
@@ -338,7 +330,8 @@ export function createWebShareClient(handlers) {
             writer,
             bytesReceived: 0,
             totalBytes: size,
-            fileName: name
+            fileName: name,
+            chunksWritten: 0
           });
           return;
         }
@@ -372,6 +365,14 @@ export function createWebShareClient(handlers) {
     try {
       await rec.writer.write(chunk);
       rec.bytesReceived += chunk.byteLength;
+      rec.chunksWritten++;
+
+      if (rec.chunksWritten % WINDOW_SIZE === 0 && rec.bytesReceived < rec.totalBytes) {
+        const entry = state.peerBySocketId.get(peerSocketId);
+        if (entry && !entry.peer.destroyed) {
+          entry.peer.send(JSON.stringify({ t: 'ACK', id }));
+        }
+      }
 
       const now = Date.now();
       if (!rec.lastProgressTime || now - rec.lastProgressTime > 100 || rec.bytesReceived >= rec.totalBytes) {
