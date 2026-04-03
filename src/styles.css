@@ -5,6 +5,35 @@
 @layer base {
   :root {
     color-scheme: dark;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   }
+  
+  body {
+    @apply bg-brand-dark text-slate-200 antialiased font-sans;
+  }
+
+  /* Custom Scrollbar for Pro feel */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-700/50 rounded-full hover:bg-slate-600;
+  }
+}
+
+.glass-card {
+  @apply bg-brand-card border border-brand-border backdrop-blur-sm;
+}
+
+.btn-primary {
+  @apply bg-brand-accent hover:bg-blue-600 text-white font-medium px-4 py-2 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100;
+}
+
+.btn-secondary {
+  @apply bg-white/5 hover:bg-white/10 border border-brand-border text-slate-300 font-medium px-4 py-2 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50;
 }
 
